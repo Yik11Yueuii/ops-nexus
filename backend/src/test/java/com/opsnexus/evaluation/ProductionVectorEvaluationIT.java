@@ -5,6 +5,7 @@ import com.opsnexus.ingestion.*;
 import java.io.*;
 import java.nio.file.*;
 import java.time.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.junit.jupiter.api.*;
 import org.springframework.ai.document.Document;
@@ -29,14 +30,17 @@ class ProductionVectorEvaluationIT {
         double threshold = Double.parseDouble(Objects.requireNonNullElse(System.getenv("RAG_SIMILARITY_THRESHOLD"), "0.45"));
         Path dataDir = Files.createTempDirectory("ops-vector-evaluation-");
         var index = new VectorIndex(new DashScopeEmbedding(key, endpoint, model, JSON), JSON, dataDir.toString(), threshold);
-        index.add(CORPUS.stream().map(this::asVectorDocument).toList());
+        index.add(CORPUS.stream().flatMap(document -> asVectorDocuments(document).stream()).toList());
         var results = new ArrayList<DetailedResult>();
         for (var evaluationCase : cases()) results.add(evaluate(index, evaluationCase));
         var metrics = RagEvaluationMetrics.summarize(results.stream().map(DetailedResult::metric).toList());
         writeReport(metrics, results, endpoint, model, threshold);
         System.out.printf(Locale.ROOT, "Production-like VectorIndex baseline: cases=%d Recall@1=%.3f Recall@3=%.3f Recall@5=%.3f MRR=%.3f document=%.3f version=%.3f refusal=%.3f p50=%.3fms p95=%.3fms%n", results.size(), metrics.recallAt1(), metrics.recallAt3(), metrics.recallAt5(), metrics.mrr(), metrics.documentRate(), metrics.versionRate(), metrics.refusalCorrectness(), metrics.latencyP50Ms(), metrics.latencyP95Ms());
     }
-    private Document asVectorDocument(CorpusDocument document) { return Document.builder().id(document.id()).text(resource(document.resource())).metadata(Map.of("title", document.title(), "versionNo", document.version(), "currentPublished", document.currentPublished())).build(); }
+    private List<Document> asVectorDocuments(CorpusDocument document) {
+        var parts = new DocumentParser().parse(resource(document.resource()).getBytes(StandardCharsets.UTF_8), "MD");
+        return parts.stream().map(part -> Document.builder().id(document.id() + "-chunk-" + part.index()).text(part.content()).metadata(Map.of("title", document.title(), "versionNo", document.version(), "currentPublished", document.currentPublished(), "chunkIndex", part.index())).build()).toList();
+    }
     private DetailedResult evaluate(VectorIndex index, EvaluationCase evaluationCase) {
         long started = System.nanoTime(); var raw = index.search(evaluationCase.question(), 8); long elapsed = System.nanoTime() - started;
         var rawHits = raw.stream().map(document -> Map.<String, Object>of("vectorId", document.getId(), "document", document.getMetadata().get("title"), "version", document.getMetadata().get("versionNo"), "currentPublished", document.getMetadata().get("currentPublished"), "score", document.getScore())).toList();
