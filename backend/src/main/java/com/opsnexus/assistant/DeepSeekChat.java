@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class DeepSeekChat {
+    public record ConversationMessage(String role,String content){}
     private final String key, url, model;
     private final ObjectMapper json;
     private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
@@ -35,10 +36,15 @@ public class DeepSeekChat {
         catch(IllegalStateException e){throw e;}catch(Exception e){throw new IllegalStateException("无法连接 DeepSeek 生成 SQL");}
     }
     public void stream(String system,String question,Consumer<String> output){
+        stream(system,List.of(),question,output);
+    }
+    public void stream(String system,List<ConversationMessage> history,String question,Consumer<String> output){
         if(!configured())throw new IllegalStateException("未配置 DEEPSEEK_API_KEY，无法生成回答");
         try{
-            var body=Map.of("model",model,"stream",true,"temperature",0.2,"max_tokens",800,
-                "messages",List.of(Map.of("role","system","content",system),Map.of("role","user","content",question)));
+            var messages=new ArrayList<Map<String,String>>();messages.add(Map.of("role","system","content",system));
+            for(var item:history)if(("user".equals(item.role())||"assistant".equals(item.role()))&&!item.content().isBlank())messages.add(Map.of("role",item.role(),"content",item.content()));
+            messages.add(Map.of("role","user","content",question));
+            var body=Map.of("model",model,"stream",true,"temperature",0.2,"max_tokens",800,"messages",messages);
             var request=HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(60))
                 .header("Authorization","Bearer "+key).header("Content-Type","application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();

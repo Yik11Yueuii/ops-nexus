@@ -32,7 +32,7 @@ public class AssistantController {
                 send(emitter,"start",Map.of("conversationId",input.conversationId()==null?0:input.conversationId()));
                 var result=service.answer(userId,input.conversationId(),input.kbId(),input.question(),part->{permit.output(part.length());send(emitter,"delta",Map.of("content",part));});
                 send(emitter,"evidence",Map.of("citations",result.citations()));
-                send(emitter,"complete",Map.of("conversationId",result.conversationId(),"messageId",result.messageId(),"confidenceLevel",result.confidence(),"evidenceSufficiency",result.sufficiency()));
+                send(emitter,"complete",Map.of("conversationId",result.conversationId(),"messageId",result.messageId(),"confidenceLevel",result.confidence(),"evidenceSufficiency",result.sufficiency(),"contextTurnsUsed",result.contextTurnsUsed(),"approximateContextChars",result.approximateContextChars()));
                 emitter.complete();
             }catch(KnowledgeException e){permit.fail(e.code);send(emitter,"error",Map.of("code",e.code,"message",e.getMessage()));emitter.complete();}
             catch(Exception e){permit.fail("CHAT_FAILED");send(emitter,"error",Map.of("code","CHAT_FAILED","message","回答生成失败，请稍后重试"));emitter.complete();}finally{permit.close();}

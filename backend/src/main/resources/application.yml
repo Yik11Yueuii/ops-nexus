@@ -34,3 +34,7 @@ ops:
   analytics-username: ${ANALYTICS_DB_USERNAME:ops_analytics}
   analytics-password: ${ANALYTICS_DB_PASSWORD:ops-analytics-readonly}
   ai-rate-per-minute: ${AI_RATE_PER_MINUTE:10}
+  conversation-context:
+    max-messages: ${CONVERSATION_CONTEXT_MAX_MESSAGES:8}
+    max-chars: ${CONVERSATION_CONTEXT_MAX_CHARS:4000}
+    ttl-seconds: ${CONVERSATION_CONTEXT_TTL_SECONDS:1800}

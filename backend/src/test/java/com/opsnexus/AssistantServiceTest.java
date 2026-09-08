@@ -39,7 +39,7 @@ class AssistantServiceTest {
   var old=Document.builder().id("old").text("旧版本机密片段").metadata("versionId",301L).score(.95).build();
   var current=Document.builder().id("new").text("当前版本要求先灰度发布").metadata("versionId",302L).score(.80).build();
   when(vectors.search(anyString(),eq(8))).thenReturn(List.of(old,current));
-  doAnswer(inv->{String system=inv.getArgument(0);assertFalse(system.contains("旧版本机密片段"));assertTrue(system.contains("当前版本要求先灰度发布"));assertTrue(system.contains("分析建议"));assertTrue(system.contains("待验证假设"));java.util.function.Consumer<String> out=inv.getArgument(2);out.accept("应先灰度发布。");return null;}).when(chat).stream(anyString(),anyString(),any());
+  doAnswer(inv->{String system=inv.getArgument(0);assertFalse(system.contains("旧版本机密片段"));assertTrue(system.contains("当前版本要求先灰度发布"));assertTrue(system.contains("分析建议"));assertTrue(system.contains("待验证假设"));java.util.function.Consumer<String> out=inv.getArgument(3);out.accept("应先灰度发布。");return null;}).when(chat).stream(anyString(),anyList(),anyString(),any());
   var streamed=new StringBuilder();
   var result=service.answer(1,null,100,"如何发布？",streamed::append);
   assertEquals("应先灰度发布。",streamed.toString());assertEquals(1,result.citations().size());
@@ -101,4 +101,21 @@ class AssistantServiceTest {
   var limited=assertThrows(com.opsnexus.knowledge.KnowledgeException.class,()->aiGovernance.enter(user,"TEST","mock-model",1));assertEquals("AI_RATE_LIMITED",limited.code);
   var row=db.queryForMap("SELECT input_tokens,output_tokens,token_estimated,status FROM ai_call_log ORDER BY id LIMIT 1");assertEquals(5,((Number)row.get("INPUT_TOKENS")).intValue());assertEquals(3,((Number)row.get("OUTPUT_TOKENS")).intValue());assertEquals(true,row.get("TOKEN_ESTIMATED"));assertEquals("SUCCESS",row.get("STATUS"));assertEquals("MEMORY",aiGovernance.limiterBackend());
  }
-}
+ @Test void sendsPriorTurnsWithRolesButDoesNotLeakAcrossConversationsOrUsers(){
+  var current=Document.builder().id("new").text("order-service 当前发布与事故信息").metadata("versionId",302L).score(.80).build();when(vectors.search(anyString(),eq(8))).thenReturn(List.of(current));
+  var histories=new ArrayList<List<DeepSeekChat.ConversationMessage>>();
+  doAnswer(inv->{histories.add(List.copyOf(inv.getArgument(1)));java.util.function.Consumer<String> out=inv.getArgument(3);out.accept("已回答");return null;}).when(chat).stream(anyString(),anyList(),anyString(),any());
+  var first=service.answer(1,null,100,"order-service 是什么？",x->{});
+  service.answer(1,first.conversationId(),100,"它最近一次发布是什么时候？",x->{});
+  service.answer(1,first.conversationId(),100,"那最近发生过什么事故？",x->{});
+  service.answer(1,null,100,"它最近发生过什么事故？",x->{});
+  assertEquals(4,histories.size());assertTrue(histories.get(0).isEmpty());assertEquals(2,histories.get(1).size());assertEquals("user",histories.get(1).get(0).role());assertTrue(histories.get(1).get(0).content().contains("order-service"));assertEquals(4,histories.get(2).size());assertTrue(histories.get(3).isEmpty());
+  assertThrows(com.opsnexus.knowledge.KnowledgeException.class,()->service.answer(2,first.conversationId(),100,"它是什么？",x->{}));
+ } @Test void excludesIncompleteAssistantMessagesFromModelHistory(){
+  db.update("INSERT INTO conversation(user_id,title) VALUES(1,'历史测试')");long cid=db.queryForObject("SELECT MAX(id) FROM conversation",Long.class);
+  db.update("INSERT INTO chat_message(conversation_id,role,content) VALUES(?,'USER','order-service 是什么？')",cid);
+  db.update("INSERT INTO chat_message(conversation_id,role,content) VALUES(?,'ASSISTANT','未完成的异常输出')",cid);
+  var current=Document.builder().id("new").text("order-service 当前信息").metadata("versionId",302L).score(.80).build();when(vectors.search(anyString(),eq(8))).thenReturn(List.of(current));
+  doAnswer(inv->{List<DeepSeekChat.ConversationMessage> history=inv.getArgument(1);assertEquals(1,history.size());assertTrue(history.getFirst().content().contains("order-service"));assertFalse(history.stream().anyMatch(m->m.content().contains("异常输出")));java.util.function.Consumer<String> out=inv.getArgument(3);out.accept("已回答");return null;}).when(chat).stream(anyString(),anyList(),anyString(),any());
+  service.answer(1,cid,100,"它最近一次发布是什么时候？",x->{});
+ }}
