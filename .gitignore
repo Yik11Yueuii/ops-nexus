@@ -1,0 +1,16 @@
+runtime/
+backend/target/
+frontend/node_modules/
+frontend/dist/
+.env
+scripts/local-env.ps1
+*.log
+.idea/
+.vscode/
+*.iml
+*.class
+*.mv.db
+*.trace.db
+hs_err_pid*
+playwright-report/
+test-results/

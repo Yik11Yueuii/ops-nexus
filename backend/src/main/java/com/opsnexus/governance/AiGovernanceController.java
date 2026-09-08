@@ -1,0 +1,2 @@
+package com.opsnexus.governance;import com.opsnexus.common.ApiResponse;import org.springframework.web.bind.annotation.*;
+@RestController @RequestMapping("/api/admin/ai-calls") public class AiGovernanceController{private final AiGovernanceService service;public AiGovernanceController(AiGovernanceService service){this.service=service;}@GetMapping public ApiResponse<?> recent(){return ApiResponse.ok(service.recent());}}
