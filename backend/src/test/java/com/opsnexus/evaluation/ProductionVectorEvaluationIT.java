@@ -29,6 +29,7 @@ class ProductionVectorEvaluationIT {
         String model = Objects.requireNonNullElse(System.getenv("EMBEDDING_MODEL"), "text-embedding-v2");
         double threshold = Double.parseDouble(Objects.requireNonNullElse(System.getenv("RAG_SIMILARITY_THRESHOLD"), "0.45"));
         Path dataDir = Files.createTempDirectory("ops-vector-evaluation-");
+        Files.createDirectories(dataDir.resolve("vectors")); // Mirrors VectorIndex @PostConstruct for direct test construction.
         var index = new VectorIndex(new DashScopeEmbedding(key, endpoint, model, JSON), JSON, dataDir.toString(), threshold);
         index.add(CORPUS.stream().flatMap(document -> asVectorDocuments(document).stream()).toList());
         var results = new ArrayList<DetailedResult>();
