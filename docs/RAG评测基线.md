@@ -59,3 +59,31 @@ mvn -f backend/pom.xml -Pproduction-vector-evaluation verify
 在阈值 0.20 下，K=1 的 Recall@5 为 0.556；K=3 提升至 0.963，K=5 和 K=10 均不再提升。实验只说明参数权衡：推荐后续先评估阈值约 0.25～0.30 加独立拒答/证据判定；不得仅把阈值改为 0.20，因为全部拒答 case 都会出现候选。
 
 本实验没有执行 chunking 变体：同一向量与语料下阈值已解释绝大多数 NO_HIT，且 K=3 已覆盖 26/27 个可回答 case；没有证据表明当前 800/80 是主因。也没有证据证明 SimpleVectorStore 是主要瓶颈、需要 Elasticsearch 或 Hybrid Search。主要后续优先级为：1) 独立拒答/证据充分性判定，2) 在受控实验中调整阈值和候选数，3) 再评估关键词混合检索，4) 最后才考虑更换向量库。
+
+## OPS-V2-003C 证据充分性 / 拒答策略实验
+
+本实验继续使用固定 32 case、DashScope `text-embedding-v2`、SimpleVectorStore 和生产 800/80 切分；仅新增测试评测器，不修改生产 VectorIndex、检索阈值或 Prompt。候选配置为阈值 0.25、TopK 3，实验产物写入被忽略的 `backend/target/rag-evaluation/evidence-sufficiency-report.json`，不提交，因为云端 embedding 分数与执行时间存在波动。
+
+策略 A 是可解释的确定性规则：存在当前版本候选、Top-1 分数不低于 0.25，并且问题与已检索证据的中文二元词覆盖率不低于 0.20 才认为证据充分。一次真实运行结果如下；“充分”是正类，意味着允许回答。
+
+| 指标 | 结果 |
+|---|---:|
+| evidence sufficiency accuracy | 0.813 |
+| precision / recall / F1 | 0.889 / 0.889 / 0.889 |
+| 可回答 case answer recall | 0.889 (24/27) |
+| 拒答 recall | 0.400 (2/5) |
+| false answer rate（REF 被错误放行） | 0.600 (3/5) |
+| false refusal rate（可回答被拒绝） | 0.111 (3/27) |
+
+五个 REF case 中，REF-01、REF-02 正确拒答；REF-03（候选为部署手册，Top-1 0.534，覆盖率 0.375）、REF-04（Redis SOP，0.532，0.667）和 REF-05（Redis SOP，0.564，0.625）被错误视为充分。这说明词面重叠会把不该回答的问题伪装成有证据，不能单独作为线上放行条件。正例的错误拒答为 DEP-07、DEP-11、DEP-12：前两项/后两项分别体现阈值候选缺失与问题-证据词面差异，DEP-11 虽有 0.560 的候选但覆盖率仅 0.143。
+
+策略 B（严格结构化 DTO 的 LLM 语义裁判）本次标记为 `SKIPPED`：执行环境未配置 DeepSeek 凭据，评测器不伪造结果。语义裁判如被启用，输入只能是问题与已检索证据，不能调用工具、使用外部知识或替代权限判断。
+
+结论：0.25/TopK3 仅适合作为后续实验候选设置，不能仅凭本实验下调生产阈值。合理的候选两阶段架构是“当前版本/权限等确定性门控 → 证据充分性策略 → 回答”，但当前证据不足以改动生产 RAG：规则的主要有效信号是“是否有候选”，而二元词覆盖对 REF 的区分力不足。下一次受控实验应在同一固定集上比较规则、受限 LLM 裁判、以及规则门控后 LLM 裁判；在获得足够 REF 精确率和稳定性证据前，保持现有生产策略。
+
+运行：
+
+```powershell
+# 已安全提供 DASHSCOPE_API_KEY 后；默认 mvn test 不会运行此 IT。
+mvn -f backend/pom.xml -Pproduction-vector-evaluation '-Dit.test=EvidenceSufficiencyIT' failsafe:integration-test failsafe:verify
+```
