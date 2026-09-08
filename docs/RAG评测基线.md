@@ -42,3 +42,20 @@ mvn -f backend/pom.xml -Pproduction-vector-evaluation verify
 ```
 
 该 profile 不会成为默认 `mvn test` 的依赖。若执行环境未提供 `DASHSCOPE_API_KEY`，测试明确显示 `SKIPPED`，不生成任何指标。成功运行后，`backend/target/rag-evaluation/production-vector-report.json` 会记录执行时间、Git commit、数据集版本、DashScope 模型/endpoint、SimpleVectorStore、阈值、所有 Top-K（包含 similarity score）和失败 case；该运行产物含可波动的云端结果，因此不提交 Git，也绝不包含密钥或 token。
+
+## OPS-V2-003B 真实向量敏感性实验
+
+2026-09-08 使用 DashScope `text-embedding-v2`、当前 SimpleVectorStore、同一 32 case 和 800/80 切分完成。运行产物 `backend/target/rag-evaluation/vector-sensitivity-report.json` 不提交；它记录每 case 的分数与失败分类。
+
+| 阈值 | Recall@1 | Recall@5 | MRR | 拒答正确率 | NO_HIT | 拒答误命中 |
+|---|---:|---:|---:|---:|---:|---:|
+| 0.20 | 0.630 | 0.963 | 0.790 | 0.000 | 1 | 5 |
+| 0.25 | 0.630 | 0.889 | 0.759 | 0.000 | 2 | 5 |
+| 0.30 | 0.630 | 0.852 | 0.741 | 0.000 | 2 | 5 |
+| 0.35 | 0.556 | 0.667 | 0.611 | 0.000 | 5 | 5 |
+| 0.40 | 0.444 | 0.481 | 0.463 | 0.200 | 11 | 4 |
+| 0.45 | 0.370 | 0.407 | 0.389 | 0.400 | 14 | 3 |
+
+在阈值 0.20 下，K=1 的 Recall@5 为 0.556；K=3 提升至 0.963，K=5 和 K=10 均不再提升。实验只说明参数权衡：推荐后续先评估阈值约 0.25～0.30 加独立拒答/证据判定；不得仅把阈值改为 0.20，因为全部拒答 case 都会出现候选。
+
+本实验没有执行 chunking 变体：同一向量与语料下阈值已解释绝大多数 NO_HIT，且 K=3 已覆盖 26/27 个可回答 case；没有证据表明当前 800/80 是主因。也没有证据证明 SimpleVectorStore 是主要瓶颈、需要 Elasticsearch 或 Hybrid Search。主要后续优先级为：1) 独立拒答/证据充分性判定，2) 在受控实验中调整阈值和候选数，3) 再评估关键词混合检索，4) 最后才考虑更换向量库。
