@@ -103,9 +103,19 @@ test('管理员完成文档版本对比',async({page})=>{
  await page.getByRole('button',{name:'开始对比'}).click();await expect(page.getByText('v1.0 → v2.0')).toBeVisible();await expect(page.locator('.risk-panel')).toContainText(/运行参数|发布流程/);
  await page.screenshot({path:'../runtime/screenshots/version-compare-desktop.png',fullPage:true});
 });
-test('证据不足问题进入知识缺口并可处理',async({page})=>{
- const question='星云科技量子厨房的月球菜单审批流程是什么？';await login(page,'admin');await page.locator('aside').getByRole('button',{name:/知识助手/}).click();
- await page.locator('.composer textarea').fill(question);await page.getByRole('button',{name:'发送',exact:true}).click();await expect(page.getByText(/没有找到足够的已发布依据/)).toBeVisible({timeout:30000});
- await page.locator('aside').getByRole('button',{name:/缺口雷达/}).click();const gap=page.locator('.gap-row').filter({hasText:question});await expect(gap).toBeVisible();await gap.getByRole('button',{name:'标记已处理'}).click();await expect(gap.getByText('已解决')).toBeVisible();
+test('证据不足与点踩进入缺口，管理员完成处理、验证和人工关闭',async({page})=>{
+ test.setTimeout(60000);
+ const question='星云科技量子厨房的月球菜单审批流程是什么？';
+ await login(page,'admin');await page.locator('aside').getByRole('button',{name:/知识助手/}).click();
+ await page.locator('.composer textarea').fill(question);await page.getByRole('button',{name:'发送',exact:true}).click();
+ await expect(page.getByText(/没有找到足够的已发布依据/)).toBeVisible({timeout:30000});
+ await page.getByRole('button',{name:'无用',exact:true}).last().click();
+ await page.locator('aside').getByRole('button',{name:/缺口雷达/}).click();
+ const gap=page.locator('.gap-row').filter({hasText:question});await expect(gap).toBeVisible();await gap.click();
+ await expect(page.locator('.gap-detail')).toContainText('NO_EVIDENCE');await expect(page.locator('.gap-detail')).toContainText('USER_DOWNVOTE');
+ page.once('dialog',d=>d.accept('补充审批流程知识并等待发布'));await page.getByRole('button',{name:'标记处理中'}).click();await expect(page.locator('.gap-detail')).toContainText('PROCESSING');
+ page.once('dialog',d=>d.accept('当前知识库尚未补充该主题'));await page.getByRole('button',{name:'重新验证'}).click();
+ page.once('dialog',d=>d.accept());await expect(page.locator('.gap-detail')).toContainText('NO_EVIDENCE');
+ page.once('dialog',d=>d.accept('管理员确认该演示问题不在知识库范围'));await page.getByRole('button',{name:'人工关闭'}).click();await expect(page.locator('.gap-detail')).toContainText('RESOLVED');
  await page.screenshot({path:'../runtime/screenshots/knowledge-gap-desktop.png',fullPage:true});
 });

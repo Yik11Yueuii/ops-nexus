@@ -22,7 +22,7 @@ class AssistantServiceTest {
  @Autowired AssistantService service; @Autowired DiagnosisService diagnosis; @Autowired VersionCompareService versionCompare; @Autowired KnowledgeGapService gaps; @Autowired BusinessToolService businessTools; @Autowired AnalyticsService analytics; @Autowired SqlSafetyValidator sqlValidator; @Autowired AiGovernanceService aiGovernance; @Autowired JdbcTemplate db;
  @MockitoBean VectorIndex vectors; @MockitoBean DeepSeekChat chat;
  @BeforeEach void setup(){
-  db.update("DELETE FROM ai_call_log");db.update("DELETE FROM sql_query_audit");db.update("DELETE FROM tool_call_audit");db.update("DELETE FROM knowledge_gap");db.update("DELETE FROM diagnosis_record");db.update("DELETE FROM incident_record");db.update("DELETE FROM release_record");
+  db.update("DELETE FROM ai_call_log");db.update("DELETE FROM sql_query_audit");db.update("DELETE FROM tool_call_audit");db.update("DELETE FROM gap_verification");db.update("DELETE FROM gap_occurrence");db.update("DELETE FROM knowledge_gap");db.update("DELETE FROM diagnosis_record");db.update("DELETE FROM incident_record");db.update("DELETE FROM release_record");
   db.update("DELETE FROM message_feedback");db.update("DELETE FROM message_citation");db.update("DELETE FROM chat_message");db.update("DELETE FROM conversation");
   db.update("DELETE FROM document_chunk_ref");db.update("UPDATE knowledge_document SET current_version_id=NULL");
   db.update("DELETE FROM document_version");db.update("DELETE FROM knowledge_document");db.update("DELETE FROM knowledge_base");
@@ -75,7 +75,7 @@ class AssistantServiceTest {
  @Test void deduplicatesAndResolvesKnowledgeGaps(){
   gaps.record(100,"如何配置未知组件？");gaps.record(100,"  如何配置未知组件？  ");
   var row=db.queryForMap("SELECT id,occurrence_count,status FROM knowledge_gap");assertEquals(2,((Number)row.get("OCCURRENCE_COUNT")).intValue());assertEquals("OPEN",row.get("STATUS"));
-  gaps.resolve(((Number)row.get("ID")).longValue());assertEquals("RESOLVED",db.queryForObject("SELECT status FROM knowledge_gap",String.class));
+  long gapId=((Number)row.get("ID")).longValue();gaps.startProcessing(gapId,1,"管理员开始处理");gaps.resolve(gapId,1,"MANUAL_RESOLUTION","历史缺口人工关闭");assertEquals("RESOLVED",db.queryForObject("SELECT status FROM knowledge_gap",String.class));
  }
  @Test void businessQueryUsesOnlyWhitelistedToolsAndWritesAudit(){
   db.update("INSERT INTO release_record(service_name,version_no,environment,status,released_at,summary) VALUES('order-service','2.4.0','PROD','SUCCESS',CURRENT_TIMESTAMP,'灰度发布完成')");

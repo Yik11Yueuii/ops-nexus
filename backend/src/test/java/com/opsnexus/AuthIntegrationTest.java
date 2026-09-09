@@ -23,6 +23,7 @@ class AuthIntegrationTest {
   String user=login("user","OpsUser2026!");
   mvc.perform(get("/api/auth/me").header("Authorization","Bearer "+user)).andExpect(status().isOk()).andExpect(jsonPath("$.data.role").value("USER")).andExpect(jsonPath("$.data.password_hash").doesNotExist());
   mvc.perform(get("/api/admin/status").header("Authorization","Bearer "+user)).andExpect(status().isForbidden());
+  mvc.perform(get("/api/admin/knowledge-gaps").header("Authorization","Bearer "+user)).andExpect(status().isForbidden());
   String admin=login("admin","OpsAdmin2026!");
   mvc.perform(get("/api/admin/status").header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andExpect(jsonPath("$.data.database").value("UP"));
   mvc.perform(get("/api/auth/me").header("Authorization","Bearer "+user+"tampered")).andExpect(status().isUnauthorized());
