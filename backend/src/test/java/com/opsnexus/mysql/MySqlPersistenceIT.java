@@ -31,7 +31,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 /** Explicit Docker-backed verification for the MySQL persistence profile; excluded from mvn test. */
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @SpringBootTest(properties = {
     "spring.profiles.active=mysql", "spring.sql.init.mode=always",
@@ -45,11 +45,15 @@ class MySqlPersistenceIT {
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4")
-        .withDatabaseName("opsnexus").withUsername("opsnexus").withPassword("opsnexus_test_only")
-        .withInitScript("mysql-test-init.sql");
+        .withDatabaseName("opsnexus").withUsername("opsnexus").withPassword("opsnexus_test_only");
 
     @DynamicPropertySource
     static void mysqlProperties(DynamicPropertyRegistry registry) {
+        // Spring may resolve dynamic properties before the JUnit extension starts @Container.
+        if (!MYSQL.isRunning()) {
+            MYSQL.start();
+        }
+        provisionAnalyticsUser();
         registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
         registry.add("spring.datasource.username", MYSQL::getUsername);
         registry.add("spring.datasource.password", MYSQL::getPassword);
@@ -58,6 +62,15 @@ class MySqlPersistenceIT {
         registry.add("ops.analytics-password", () -> ANALYTICS_PASSWORD);
     }
 
+    private static void provisionAnalyticsUser() {
+        try (Connection connection = DriverManager.getConnection(MYSQL.getJdbcUrl(), "root", MYSQL.getPassword());
+             Statement statement = connection.createStatement()) {
+            statement.execute("SET GLOBAL log_bin_trust_function_creators = 1");
+            statement.execute("CREATE USER IF NOT EXISTS 'opsnexus_analytics'@'%' IDENTIFIED BY 'opsnexus_test_only'");
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Unable to provision MySQL integration-test analytics user", exception);
+        }
+    }
     @Autowired JdbcTemplate db;
     @Autowired KnowledgeService knowledge;
     @Autowired KnowledgeGapService gaps;

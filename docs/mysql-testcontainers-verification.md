@@ -1,11 +1,18 @@
 # OPS-V2-006 MySQL / Testcontainers verification record
 
-- Time: 2026-09-09 11:37 Asia/Shanghai
-- Git baseline: local `master` `581ee39`; working branch `feat/mysql-testcontainers`
-- Target: MySQL 8.4 through Testcontainers; application schema: `schema-mysql.sql`
+- Time: 2026-09-09 16:26 Asia/Shanghai
+- Git baseline: `7ef56dc` on `feat/mysql-testcontainers`, plus this compatibility update under verification
+- Host: Docker Desktop / Docker Engine 29.7.2, WSL2 Linux backend
+- Testcontainers: 2.0.5 (BOM-managed); docker-java 3.7.1
+- Containers: `testcontainers/ryuk:0.14.0` and `mysql:8.4` both started by Testcontainers
+- Application schema: `schema-mysql.sql`, initialized by Spring against a fresh MySQL 8.4 container
 - Command: `mvn -f backend/pom.xml -Pmysql-integration verify`
-- Current host result: **NOT RUN**. Testcontainers discovered `MySqlPersistenceIT` (3 tests) but Docker CLI/daemon is not available, so all 3 were explicitly skipped. No MySQL quality or compatibility result is claimed from this host.
-- Default isolation check: `mvn -f backend/pom.xml test` passed, 31 tests, Docker-free.
-- Frontend check: `npm.cmd run build` passed.
+- MySQL integration result: **PASS** — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0; BUILD SUCCESS.
 
-When Docker is available, rerun the command above. The test bootstraps a fresh `mysql:8.4` database with `schema-mysql.sql`, uses test-only container credentials, and verifies document publication rollback/current-version behavior, conversation feedback/gap lifecycle/audits, and database-enforced read-only analytics access.
+The verified scenarios are:
+
+1. User, knowledge base, document version publication, transaction rollback, and current-version behavior.
+2. Conversation, feedback, knowledge-gap lifecycle, revalidation/reopen, and business/SQL audit persistence.
+3. Database-enforced read-only analytics access: allowed SELECTs and rejected writes/unauthorized-table reads.
+
+The `mysql-integration` profile remains explicit. Default `mvn test` does not run these Docker-backed `*IT` tests and therefore remains Docker-free.
