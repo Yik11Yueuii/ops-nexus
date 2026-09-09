@@ -71,8 +71,7 @@ npx.cmd playwright test
 测试只删除自己本次上传的临时草稿；知识助手用例会进行一次真实模型问答，可能产生少量云端调用。截图和结果保存在项目 runtime 目录。
 
 ## 可选 MySQL
-先创建 opsnexus 数据库，并手动执行 backend/src/main/resources/schema-mysql.sql；设置 MYSQL_URL、MYSQL_USER、MYSQL_PASSWORD，启用 mysql Profile。默认不自动初始化 MySQL。当前仅提供配置与脚本，尚未做 MySQL 集成验收。
-
+MySQL 8 profile 使用 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USERNAME`、`DB_PASSWORD`，分析只读账户使用 `DB_ANALYTICS_USERNAME`、`DB_ANALYTICS_PASSWORD`。生产 profile 不自动执行 DDL；空库导入 `backend/src/main/resources/schema-mysql.sql`，已有库按 [MySQL 本地运行与 Testcontainers 验证](docs/MySQL本地运行.md) 的升级步骤处理。默认 `mvn test` 仍完全离线；Docker 可用时执行 `mvn -f backend/pom.xml -Pmysql-integration verify` 运行真实 MySQL 8 Testcontainers 验证。
 ## 接口
 - POST /api/auth/login：登录
 - GET /api/auth/me：当前用户

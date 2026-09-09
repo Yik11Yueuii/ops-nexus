@@ -1,0 +1,1 @@
+CREATE USER IF NOT EXISTS 'opsnexus_analytics'@'%' IDENTIFIED BY 'opsnexus_test_only';

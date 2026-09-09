@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component public class SqlSafetyValidator{
  private static final Set<String> TABLES=Set.of("service_catalog","release_record","incident_record");
  private static final Set<String> COLUMNS=Set.of("id","service_name","display_name","owner_name","current_version","runtime_status","version_no","environment","status","released_at","summary","symptom","root_cause","resolution","occurred_at","resolved_at");
- private static final Set<String> FUNCTIONS=Set.of("COUNT","SUM","AVG","MIN","MAX","DATEADD");
+ private static final Set<String> FUNCTIONS=Set.of("COUNT","SUM","AVG","MIN","MAX","DATEADD","DATE_ADD");
  public String validate(String raw){
   try{
    String sql=raw==null?"":raw.replace("```sql","").replace("```","").strip();

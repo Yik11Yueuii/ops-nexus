@@ -1,10 +1,15 @@
 spring:
   datasource:
-    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/opsnexus}
-    username: ${MYSQL_USER:opsnexus}
-    password: ${MYSQL_PASSWORD}
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:opsnexus}?useUnicode=true&characterEncoding=utf8&useSSL=${DB_SSL:false}&serverTimezone=${DB_TIME_ZONE:Asia/Shanghai}
+    username: ${DB_USERNAME:opsnexus}
+    password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
   sql:
     init:
       mode: never
 
+ops:
+  analytics-dialect: MySQL 8
+  analytics-url: ${ANALYTICS_DB_URL:${spring.datasource.url}}
+  analytics-username: ${ANALYTICS_DB_USERNAME:${DB_ANALYTICS_USERNAME:opsnexus_analytics}}
+  analytics-password: ${ANALYTICS_DB_PASSWORD:${DB_ANALYTICS_PASSWORD:}}
