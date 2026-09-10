@@ -164,7 +164,10 @@ class MySqlPersistenceIT {
             assertTrue(statement.executeQuery("SELECT service_name FROM service_catalog").next());
             assertThrows(SQLException.class, () -> statement.executeUpdate("UPDATE service_catalog SET runtime_status='BAD'"));
             assertThrows(SQLException.class, () -> statement.executeUpdate("DELETE FROM service_catalog"));
+            assertThrows(SQLException.class, () -> statement.executeUpdate("INSERT INTO service_catalog(service_name,display_name) VALUES('forbidden','forbidden')"));
+            assertThrows(SQLException.class, () -> statement.execute("CREATE TABLE analytics_write_probe(id BIGINT)"));
             assertThrows(SQLException.class, () -> statement.executeQuery("SELECT username FROM app_user"));
+            assertThrows(SQLException.class, () -> statement.executeQuery("SELECT question FROM sql_query_audit"));
         }
     }
 
