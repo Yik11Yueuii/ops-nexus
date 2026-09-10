@@ -25,7 +25,7 @@ class ExternalAiResilienceTest {
 
         assertEquals("ok", result);
         assertEquals(2, invocations.get());
-        verify(db).update(contains("ai_provider_call_audit"), eq("DEEPSEEK_CHAT"), eq("complete"), eq(true), isNull(), eq(1), anyString(), anyLong());
+        verify(db).update(contains("ai_provider_call_audit"), eq("DEEPSEEK_CHAT"), eq("complete"), eq(true), isNull(), eq(1), anyString(), anyLong(), isNull());
     }
 
     @Test

@@ -32,7 +32,7 @@ public class SecurityConfig {
   var roles = new JwtGrantedAuthoritiesConverter(); roles.setAuthoritiesClaimName("role"); roles.setAuthorityPrefix("ROLE_");
   var converter = new JwtAuthenticationConverter(); converter.setJwtGrantedAuthoritiesConverter(roles);
   http.csrf(c -> c.disable()).sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-   .authorizeHttpRequests(a -> a.requestMatchers("/api/auth/login","/api/health").permitAll().requestMatchers("/api/admin/**").hasRole("ADMIN").anyRequest().authenticated())
+   .authorizeHttpRequests(a -> a.requestMatchers("/api/auth/login","/api/health","/actuator/health/**","/actuator/info").permitAll().requestMatchers("/api/admin/**","/actuator/**").hasRole("ADMIN").anyRequest().authenticated())
    .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(converter))
     .authenticationEntryPoint((req,res,e) -> {res.setStatus(401);res.setContentType("application/json;charset=UTF-8");mapper.writeValue(res.getOutputStream(),ApiResponse.error("UNAUTHORIZED","请先登录"));}))
    .exceptionHandling(e -> e.authenticationEntryPoint((req,res,ex) -> {res.setStatus(401);res.setContentType("application/json;charset=UTF-8");mapper.writeValue(res.getOutputStream(),ApiResponse.error("UNAUTHORIZED","请先登录"));})

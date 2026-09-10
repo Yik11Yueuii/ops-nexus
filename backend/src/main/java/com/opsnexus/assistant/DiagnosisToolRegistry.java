@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.opsnexus.knowledge.KnowledgeException;
+import com.opsnexus.observability.OpsNexusMetrics;
 import com.opsnexus.security.PromptTrustBoundary;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -42,15 +43,17 @@ public class DiagnosisToolRegistry {
     private final DiagnosisToolFunctions tools;
     private final DiagnosisToolAuditService audit;
     private final PromptTrustBoundary trustBoundary;
+    private final OpsNexusMetrics metrics;
     private final Map<String, Registered> registered = new LinkedHashMap<>();
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
 
     public DiagnosisToolRegistry(ObjectMapper json, DiagnosisToolFunctions tools, DiagnosisToolAuditService audit,
-            PromptTrustBoundary trustBoundary) {
+            PromptTrustBoundary trustBoundary, OpsNexusMetrics metrics) {
         this.json = json;
         this.tools = tools;
         this.audit = audit;
         this.trustBoundary = trustBoundary;
+        this.metrics = metrics;
         for (ToolCallback callback : MethodToolCallbackProvider.builder().toolObjects(tools).build().getToolCallbacks()) {
             String name = callback.getToolDefinition().name();
             registered.put(name, new Registered(callback, "lookup_recent_incidents".equals(name)));
@@ -203,6 +206,7 @@ public class DiagnosisToolRegistry {
             String failure, long started, int resultSize) {
         audit.record(userId, requestId, name, authorized, success, failure,
             (System.nanoTime() - started) / 1_000_000, resultSize);
+        metrics.tool(name, authorized ? "EXECUTED" : "DENIED", success, failure, (System.nanoTime() - started) / 1_000_000);
     }
 
     private static final class Truncation { boolean value; }

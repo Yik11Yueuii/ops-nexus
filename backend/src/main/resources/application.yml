@@ -59,3 +59,23 @@ ops:
     max-messages: ${CONVERSATION_CONTEXT_MAX_MESSAGES:8}
     max-chars: ${CONVERSATION_CONTEXT_MAX_CHARS:4000}
     ttl-seconds: ${CONVERSATION_CONTEXT_TTL_SECONDS:1800}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      status:
+        http-mapping:
+          degraded: 200
+        order: DOWN,OUT_OF_SERVICE,DEGRADED,UNKNOWN,UP
+  health:
+    redis:
+      enabled: false
+    group:
+      readiness:
+        include: db,redisFallback,aiProvider

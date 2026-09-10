@@ -10,15 +10,15 @@ import BusinessQueryView from './BusinessQueryView.vue';
 import AnalyticsView from './AnalyticsView.vue';
 const view=ref('dashboard');
 type User={displayName:string;role:string;username:string};
-const user=ref<User|null>(null),username=ref(''),password=ref(''),error=ref(''),busy=ref(false),status=ref<Record<string,unknown>|null>(null);
+const user=ref<User|null>(null),username=ref(''),password=ref(''),error=ref(''),busy=ref(false),status=ref<Record<string,unknown>|null>(null),observability=ref<Record<string,number>|null>(null);
 let token=sessionStorage.getItem('ops-token')||'';
 async function api(path:string, options:RequestInit={}) {
  const res=await fetch('/api'+path,{...options,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...options.headers}});
  const body=await res.json(); if(!res.ok)throw new Error(body.message||'请求失败'); return body.data;
 }
-async function load(){user.value=await api('/auth/me'); if(user.value?.role==='ADMIN')status.value=await api('/admin/status');}
+async function load(){user.value=await api('/auth/me'); if(user.value?.role==='ADMIN'){status.value=await api('/admin/status');observability.value=await api('/admin/observability/summary');}}
 async function login(){busy.value=true;error.value='';try{const data=await api('/auth/login',{method:'POST',body:JSON.stringify({username:username.value,password:password.value})});token=data.token;sessionStorage.setItem('ops-token',token);password.value='';await load();}catch(e){error.value=e instanceof Error?e.message:'无法连接服务';}finally{busy.value=false;}}
-function logout(){token='';sessionStorage.removeItem('ops-token');user.value=null;status.value=null;}
+function logout(){token='';sessionStorage.removeItem('ops-token');user.value=null;status.value=null;observability.value=null;}
 onMounted(async()=>{if(token)try{await load();}catch{logout();}});
 </script>
 <template>
@@ -37,7 +37,7 @@ onMounted(async()=>{if(token)try{await load();}catch{logout();}});
    <KnowledgeGapView v-else-if="view==='gaps'" />
    <AnalyticsView v-else-if="view==='analytics'" />
    <KnowledgeCenter v-else-if="view==='knowledge'" :admin="user.role==='ADMIN'" />
-   <div v-else><h1>系统状态</h1><div class="cards"><article v-if="status"><h3>依赖连接</h3><p>数据库：{{status.database}}</p><p>Redis：{{status.redis}}</p><p>AI 限流后端：{{status.aiLimiter}}</p><small>模型密钥：{{status.modelConfigured?'已配置':'未配置'}}（不代表调用已验证）</small></article></div></div>
+   <div v-else><h1>系统状态</h1><div class="cards"><article v-if="status"><h3>依赖连接</h3><p>数据库：{{status.database}}</p><p>Redis：{{status.redis}}</p><p>AI 限流后端：{{status.aiLimiter}}</p><small>模型密钥：{{status.modelConfigured?'已配置':'未配置'}}（不代表调用已验证）</small></article><article v-if="observability"><h3>运行概览</h3><p>AI 调用：{{observability.aiCalls}}</p><p>RAG 检索：{{observability.ragRequests}}</p><p>工具 / SQL：{{observability.toolCalls}} / {{observability.sqlQueries}}</p><p>语义对比 / 入库：{{observability.semanticComparisons}} / {{observability.ingestionEvents}}</p></article></div></div>
   </section>
  </div>
 </template>

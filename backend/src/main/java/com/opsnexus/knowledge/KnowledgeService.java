@@ -1,6 +1,9 @@
 package com.opsnexus.knowledge;
 
 import com.opsnexus.ingestion.*;
+import com.opsnexus.observability.OpsNexusMetrics;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.nio.file.*;
@@ -23,12 +26,15 @@ public class KnowledgeService {
     private final DocumentParser parser;
     private final VectorIndex index;
     private final Path uploads;
+    private final OpsNexusMetrics metrics;
     private final ThreadPoolExecutor worker = new ThreadPoolExecutor(1,1,0,TimeUnit.SECONDS,
         new ArrayBlockingQueue<>(32), r -> { var t = new Thread(r,"document-ingestion"); t.setDaemon(true); return t; });
-    public KnowledgeService(JdbcTemplate db, TransactionTemplate tx, DocumentParser parser, VectorIndex index,
+    public KnowledgeService(JdbcTemplate db, TransactionTemplate tx, DocumentParser parser, VectorIndex index, OpsNexusMetrics metrics, MeterRegistry meterRegistry,
             @Value("${ops.data-dir:./runtime}") String dir) {
         this.db=db; this.tx=tx; this.parser=parser; this.index=index;
+        this.metrics=metrics;
         uploads=Path.of(dir).toAbsolutePath().normalize().resolve("uploads");
+        Gauge.builder("opsnexus.ingestion.queue.depth", worker.getQueue(), java.util.concurrent.BlockingQueue::size).register(meterRegistry);
     }
     @PostConstruct void recover() throws Exception {
         Files.createDirectories(uploads);
@@ -85,7 +91,7 @@ public class KnowledgeService {
         Path path=uploads.resolve(stored); Files.write(path,bytes,StandardOpenOption.CREATE_NEW);
         final String fileType=type;
         try {
-            return tx.execute(s -> {
+            long versionId = tx.execute(s -> {
                 long did=documentId==null?insert("INSERT INTO knowledge_document(kb_id,title,created_by) VALUES(?,?,?)",kb,title.strip(),user):documentId;
                 long vid=insert("INSERT INTO document_version(document_id,version_no,original_name,file_type,file_size,checksum,storage_path,process_status,chunk_count) VALUES(?,?,?,?,?,?,?,'PARSED',?)",
                     did,version.strip(),name,fileType,bytes.length,checksum,stored,parts.size());
@@ -93,6 +99,7 @@ public class KnowledgeService {
                     vid,"version-"+vid+"-chunk-"+part.index(),part.index(),part.page(),part.content());
                 return vid;
             });
+            metrics.ingestion("SUBMITTED", true, -1); return versionId;
         } catch(Exception e) { Files.deleteIfExists(path); throw e; }
     }
     public List<Map<String,Object>> preview(long id, boolean admin) {
@@ -110,13 +117,14 @@ public class KnowledgeService {
         if (!index.configured()) throw new KnowledgeException(503,"MODEL_NOT_CONFIGURED","尚未配置模型密钥，正文已保存，可预览；配置后重启后端再向量化");
         if (index.error()!=null) throw new KnowledgeException(503,"VECTOR_UNAVAILABLE",index.error());
         db.update("UPDATE document_version SET process_status='PROCESSING',failure_reason=NULL WHERE id=?",id);
-        try { worker.execute(() -> ingest(id)); }
+        try { worker.execute(() -> ingest(id)); metrics.ingestion("PROCESSING", true, -1); }
         catch (RejectedExecutionException e) {
             db.update("UPDATE document_version SET process_status='PARSED' WHERE id=?",id);
             throw new KnowledgeException(429,"QUEUE_FULL","处理队列已满，请稍后重试");
         }
     }
     private void ingest(long id) {
+        long started=System.nanoTime();
         try {
             var v=version(id); var d=doc(number(v,"documentId"));
             var docs=new ArrayList<Document>();
@@ -129,9 +137,11 @@ public class KnowledgeService {
             }
             index.add(docs);
             db.update("UPDATE document_version SET process_status='READY',failure_reason=NULL WHERE id=?",id);
+            metrics.ingestion("COMPLETED", true, (System.nanoTime()-started)/1_000_000);
         } catch(Exception e) {
             String reason=e instanceof IllegalStateException?e.getMessage():"文档向量化失败，请重试";
             db.update("UPDATE document_version SET process_status='FAILED',failure_reason=? WHERE id=?",reason==null?"处理失败":reason.substring(0,Math.min(reason.length(),500)),id);
+            metrics.ingestion("COMPLETED", false, (System.nanoTime()-started)/1_000_000);
         }
     }
     public synchronized void publish(long id) {
