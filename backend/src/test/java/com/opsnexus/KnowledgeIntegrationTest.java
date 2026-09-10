@@ -104,6 +104,19 @@ class KnowledgeIntegrationTest {
         mvc.perform(get("/api/admin/analytics/audits").with(user())).andExpect(status().isForbidden());
         mvc.perform(get("/api/admin/analytics/audits")).andExpect(status().isUnauthorized());
     }
+    @Test void versionCompareApiKeepsFactsWhenSemanticProviderIsUnavailable()throws Exception{
+        long kb=base(),oldVersion=upload(kb,null,"v1","timeout is 5 seconds");
+        long doc=db.queryForObject("SELECT document_id FROM document_version WHERE id=?",Long.class,oldVersion);
+        long newVersion=upload(kb,doc,"v2","timeout is 30 seconds");
+        mvc.perform(post("/api/admin/document-version-compare").with(user()).contentType("application/json")
+            .content(json.writeValueAsString(Map.of("oldVersionId",oldVersion,"newVersionId",newVersion)))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/admin/document-version-compare").with(admin()).contentType("application/json")
+            .content(json.writeValueAsString(Map.of("oldVersionId",oldVersion,"newVersionId",newVersion))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.changedBlocks[0].id").value("CHANGE-001"))
+            .andExpect(jsonPath("$.data.changes[0].oldText").value("timeout is 5 seconds"))
+            .andExpect(jsonPath("$.data.changes[0].newText").value("timeout is 30 seconds"))
+            .andExpect(jsonPath("$.data.semanticComparison.analysisStatus").value("SEMANTIC_ANALYSIS_UNAVAILABLE"));
+    }
     @Test void parsesFourFormatsAndPreservesPdfPages()throws Exception{
         assertEquals("hello",parser.parse("hello".getBytes(),"MD").getFirst().content());
         assertEquals("中文正文",parser.parse("中文正文".getBytes(StandardCharsets.UTF_8),"TXT").getFirst().content());

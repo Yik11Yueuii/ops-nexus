@@ -22,7 +22,7 @@ class AssistantServiceTest {
  @Autowired AssistantService service; @Autowired DiagnosisService diagnosis; @Autowired VersionCompareService versionCompare; @Autowired KnowledgeGapService gaps; @Autowired BusinessToolService businessTools; @Autowired AnalyticsService analytics; @Autowired SqlSafetyValidator sqlValidator; @Autowired AiGovernanceService aiGovernance; @Autowired JdbcTemplate db;
  @MockitoBean VectorIndex vectors; @MockitoBean DeepSeekChat chat;
  @BeforeEach void setup(){
-  db.update("DELETE FROM ai_call_log");db.update("DELETE FROM sql_query_audit");db.update("DELETE FROM tool_call_audit");db.update("DELETE FROM gap_verification");db.update("DELETE FROM gap_occurrence");db.update("DELETE FROM knowledge_gap");db.update("DELETE FROM diagnosis_record");db.update("DELETE FROM incident_record");db.update("DELETE FROM release_record");
+  db.update("DELETE FROM version_semantic_compare_audit");db.update("DELETE FROM ai_call_log");db.update("DELETE FROM sql_query_audit");db.update("DELETE FROM tool_call_audit");db.update("DELETE FROM gap_verification");db.update("DELETE FROM gap_occurrence");db.update("DELETE FROM knowledge_gap");db.update("DELETE FROM diagnosis_record");db.update("DELETE FROM incident_record");db.update("DELETE FROM release_record");
   db.update("DELETE FROM message_feedback");db.update("DELETE FROM message_citation");db.update("DELETE FROM chat_message");db.update("DELETE FROM conversation");
   db.update("DELETE FROM document_chunk_ref");db.update("UPDATE knowledge_document SET current_version_id=NULL");
   db.update("DELETE FROM document_version");db.update("DELETE FROM knowledge_document");db.update("DELETE FROM knowledge_base");
