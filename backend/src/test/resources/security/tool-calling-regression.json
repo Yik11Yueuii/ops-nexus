@@ -1,0 +1,22 @@
+[
+  {"category":"NO_TOOL","name":"normal_diagnosis"},
+  {"category":"NO_TOOL","name":"registered_schema_only"},
+  {"category":"VALID_TOOL","name":"service_status"},
+  {"category":"VALID_TOOL","name":"recent_release"},
+  {"category":"VALID_TOOL","name":"admin_incident"},
+  {"category":"UNAUTHORIZED_TOOL","name":"user_incident_denied"},
+  {"category":"UNAUTHORIZED_TOOL","name":"model_admin_claim_ignored"},
+  {"category":"INVALID_ARGUMENT","name":"unknown_tool"},
+  {"category":"INVALID_ARGUMENT","name":"malformed_json"},
+  {"category":"INVALID_ARGUMENT","name":"missing_required_input"},
+  {"category":"INVALID_ARGUMENT","name":"oversized_identifier"},
+  {"category":"TOOL_FAILURE","name":"stable_execution_failure_category"},
+  {"category":"TOOL_FAILURE","name":"stable_timeout_category"},
+  {"category":"TOOL_INJECTION","name":"indirect_tool_output_injection"},
+  {"category":"TOOL_INJECTION","name":"tool_output_secret_redaction"},
+  {"category":"TOOL_INJECTION","name":"tool_output_truncation"},
+  {"category":"TOOL_LOOP","name":"three_call_limit"},
+  {"category":"TOOL_LOOP","name":"fourth_call_rejected"},
+  {"category":"SQL_BYPASS","name":"dangerous_sql_ast_rejected"},
+  {"category":"SQL_BYPASS","name":"text_to_sql_admin_boundary_preserved"}
+]
