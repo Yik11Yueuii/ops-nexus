@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opsnexus.assistant.DeepSeekChat;
 import com.opsnexus.resilience.AiProviderException;
+import com.opsnexus.observability.OpsNexusMetrics;
 import com.opsnexus.security.PromptTrustBoundary;
 import java.time.Duration;
 import java.time.Instant;
@@ -51,17 +52,20 @@ public class VersionCompareService {
     private final PromptTrustBoundary trustBoundary;
     private final ObjectMapper json;
     private final SemanticComparisonAuditService semanticAudit;
+    private final OpsNexusMetrics metrics;
 
     public VersionCompareService(JdbcTemplate db, DeepSeekChat chat, PromptTrustBoundary trustBoundary,
-                                 ObjectMapper json, SemanticComparisonAuditService semanticAudit) {
+                                 ObjectMapper json, SemanticComparisonAuditService semanticAudit, OpsNexusMetrics metrics) {
         this.db = db;
         this.chat = chat;
         this.trustBoundary = trustBoundary;
         this.json = json;
         this.semanticAudit = semanticAudit;
+        this.metrics = metrics;
     }
 
     public Result compare(long oldId, long newId) {
+        long started = System.nanoTime();
         if (oldId == newId) throw new KnowledgeException(400, "INVALID_INPUT", "请选择两个不同版本");
         DocumentMetadata metadata = metadata(oldId, newId);
         List<String> oldLines = lines(oldId);
@@ -70,9 +74,12 @@ public class VersionCompareService {
             throw new KnowledgeException(413, "COMPARE_TOO_LARGE", "首版最多比较 1200 行");
         }
         DiffFacts facts = deterministicDiff(oldLines, newLines, metadata.oldVersion(), metadata.newVersion());
-        return new Result(metadata.documentId(), metadata.title(), metadata.oldVersion(), metadata.newVersion(),
+        Result result = new Result(metadata.documentId(), metadata.title(), metadata.oldVersion(), metadata.newVersion(),
             facts.added(), facts.deleted(), facts.modified(), facts.changes(), facts.blocks(),
             riskHints(facts.blocks()), analyze(metadata, facts.blocks()));
+        String status = result.semanticComparison().analysisStatus();
+        metrics.semantic(status.equals("AVAILABLE") ? "SEMANTIC_SUCCESS" : status.equals("NOT_REQUIRED") ? "DETERMINISTIC_ONLY" : "FALLBACK", status.equals("AVAILABLE") || status.equals("NOT_REQUIRED") ? null : status, elapsed(started));
+        return result;
     }
 
     private DocumentMetadata metadata(long oldId, long newId) {

@@ -24,8 +24,12 @@ class AuthIntegrationTest {
   mvc.perform(get("/api/auth/me").header("Authorization","Bearer "+user)).andExpect(status().isOk()).andExpect(jsonPath("$.data.role").value("USER")).andExpect(jsonPath("$.data.password_hash").doesNotExist());
   mvc.perform(get("/api/admin/status").header("Authorization","Bearer "+user)).andExpect(status().isForbidden());
   mvc.perform(get("/api/admin/knowledge-gaps").header("Authorization","Bearer "+user)).andExpect(status().isForbidden());
+  mvc.perform(get("/api/admin/observability/summary").header("Authorization","Bearer "+user)).andExpect(status().isForbidden());
+  mvc.perform(get("/actuator/metrics").header("Authorization","Bearer "+user)).andExpect(status().isForbidden());
   String admin=login("admin","OpsAdmin2026!");
   mvc.perform(get("/api/admin/status").header("Authorization","Bearer "+admin)).andExpect(status().isOk()).andExpect(jsonPath("$.data.database").value("UP"));
+  mvc.perform(get("/api/admin/observability/summary").header("Authorization","Bearer "+admin)).andExpect(status().isOk());
+  mvc.perform(get("/actuator/metrics").header("Authorization","Bearer "+admin)).andExpect(status().isOk());
   mvc.perform(get("/api/auth/me").header("Authorization","Bearer "+user+"tampered")).andExpect(status().isUnauthorized());
   assertTrue(db.queryForObject("SELECT password_hash FROM app_user WHERE username='admin'",String.class).startsWith("$2"));
  }

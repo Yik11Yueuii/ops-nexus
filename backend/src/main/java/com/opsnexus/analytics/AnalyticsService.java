@@ -3,6 +3,8 @@ package com.opsnexus.analytics;
 import com.opsnexus.assistant.DeepSeekChat;
 import com.opsnexus.governance.AiGovernanceService;
 import com.opsnexus.knowledge.KnowledgeException;
+import com.opsnexus.observability.OpsNexusMetrics;
+import com.opsnexus.observability.TraceContext;
 import com.opsnexus.resilience.AiProviderException;
 import com.opsnexus.security.PromptTrustBoundary;
 import java.sql.*;
@@ -23,6 +25,7 @@ public class AnalyticsService {
     private final String user;
     private final String password;
     private final PromptTrustBoundary trustBoundary;
+    private final OpsNexusMetrics metrics;
 
     public AnalyticsService(
         JdbcTemplate audit,
@@ -30,6 +33,7 @@ public class AnalyticsService {
         SqlSafetyValidator validator,
         AiGovernanceService governance,
         PromptTrustBoundary trustBoundary,
+        OpsNexusMetrics metrics,
         @Value("${ops.analytics-url}") String url,
         @Value("${ops.analytics-username}") String user,
         @Value("${ops.analytics-password}") String password,
@@ -43,6 +47,7 @@ public class AnalyticsService {
         this.user = user;
         this.password = password;
         this.trustBoundary = trustBoundary;
+        this.metrics = metrics;
         this.schema = trustBoundary.analyticsSystemPolicy("You generate exactly one " + dialect + " SELECT statement and no explanation. "
             + "Allowed tables/columns: service_catalog(id,service_name,display_name,owner_name,current_version,runtime_status); "
             + "release_record(id,service_name,version_no,environment,status,released_at,summary); "
@@ -64,6 +69,7 @@ public class AnalyticsService {
         String sql = null;
         long auditId = createAudit(requestId, userId, safeQuestion);
         long started = System.nanoTime();
+        metrics.sql("ATTEMPT", true, null, -1);
         try {
             var permit = governance.enter(userId, "TEXT_TO_SQL", ai.modelName(), safeQuestion.length());
             try {
@@ -80,6 +86,7 @@ public class AnalyticsService {
             Result result = execute(safeSql);
             long latency = (System.nanoTime() - started) / 1_000_000;
             audit.update("UPDATE sql_query_audit SET execution_status='SUCCESS',latency_ms=?,row_count=? WHERE id=?", latency, result.rows.size(), auditId);
+            metrics.sql("EXECUTION", true, null, latency);
             return Map.of(
                 "auditId", auditId,
                 "generatedSql", safeSql,
@@ -94,6 +101,8 @@ public class AnalyticsService {
                 "UPDATE sql_query_audit SET generated_sql=?,validation_status=CASE WHEN validation_status='PENDING' THEN 'REJECTED' ELSE validation_status END,execution_status='FAILED',latency_ms=?,failure_reason=? WHERE id=?",
                 redact(sql), (System.nanoTime() - started) / 1_000_000, redact(reason), auditId
             );
+            metrics.sql(exception instanceof KnowledgeException ? "REJECTED" : "EXECUTION", false,
+                exception instanceof KnowledgeException knowledgeException ? knowledgeException.code : "ANALYTICS_FAILED", (System.nanoTime() - started) / 1_000_000);
             if (exception instanceof KnowledgeException knowledgeException) {
                 throw knowledgeException;
             }
@@ -113,12 +122,13 @@ public class AnalyticsService {
             var keyHolder = new GeneratedKeyHolder();
             audit.update(connection -> {
                 var statement = connection.prepareStatement(
-                    "INSERT INTO sql_query_audit(request_id,user_id,question,validation_status,execution_status) VALUES(?,?,?,'PENDING','NOT_STARTED')",
+                    "INSERT INTO sql_query_audit(request_id,user_id,question,validation_status,execution_status,trace_id) VALUES(?,?,?,'PENDING','NOT_STARTED',?)",
                     new String[]{"ID"}
                 );
                 statement.setString(1, requestId);
                 statement.setLong(2, userId);
                 statement.setString(3, redact(question));
+                statement.setString(4, TraceContext.current());
                 return statement;
             }, keyHolder);
             return Objects.requireNonNull(keyHolder.getKey()).longValue();
