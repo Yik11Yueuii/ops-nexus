@@ -55,12 +55,20 @@ public class DeepSeekChat {
     public String modelName() { return model; }
 
     public String complete(String system, String question) {
+        return complete(system, List.of(), question, "complete");
+    }
+
+    /**
+     * Runs a bounded, non-streaming completion with supplied data kept in separately labelled
+     * untrusted contexts. Callers must still validate the returned text before using it.
+     */
+    public String complete(String system, List<PromptTrustBoundary.UntrustedContext> contexts,
+            String question, String operation) {
         requireConfigured();
-        return resilience.execute(AiProvider.DEEPSEEK_CHAT, "complete", () -> {
+        return resilience.execute(AiProvider.DEEPSEEK_CHAT, operation, () -> {
             try {
                 var body = Map.of("model", model, "stream", false, "temperature", 0, "max_tokens", 500,
-                    "messages", List.of(Map.of("role", "system", "content", system),
-                        Map.of("role", "user", "content", trustBoundary.wrap(new PromptTrustBoundary.UntrustedContext("current_user_request", question)))));
+                    "messages", streamingMessages(system, List.of(), contexts, question));
                 var response = sendString(request(body));
                 var content = json.readTree(response.body()).path("choices").path(0).path("message").path("content");
                 if (!content.isTextual() || content.asText().isBlank()) {
