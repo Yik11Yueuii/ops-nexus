@@ -6,6 +6,7 @@ import com.opsnexus.resilience.AiProviderException;
 import com.opsnexus.resilience.AiProviderFailure;
 import com.opsnexus.resilience.AiResilienceProperties;
 import com.opsnexus.resilience.ExternalAiResilience;
+import com.opsnexus.security.PromptTrustBoundary;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -31,15 +32,18 @@ public class DeepSeekChat {
     private final HttpClient http;
     private final Duration responseTimeout;
     private final ExternalAiResilience resilience;
+    private final PromptTrustBoundary trustBoundary;
 
     public DeepSeekChat(@Value("${DEEPSEEK_API_KEY:}") String key,
             @Value("${ops.chat-url}") String url, @Value("${ops.chat-model}") String model,
-            ObjectMapper json, AiResilienceProperties properties, ExternalAiResilience resilience) {
+            ObjectMapper json, AiResilienceProperties properties, ExternalAiResilience resilience,
+            PromptTrustBoundary trustBoundary) {
         this.key = key;
         this.url = url;
         this.model = model;
         this.json = json;
         this.resilience = resilience;
+        this.trustBoundary = trustBoundary;
         var settings = properties.getChat();
         this.http = HttpClient.newBuilder().connectTimeout(settings.getConnectTimeout()).build();
         this.responseTimeout = settings.getResponseTimeout();
@@ -53,7 +57,8 @@ public class DeepSeekChat {
         return resilience.execute(AiProvider.DEEPSEEK_CHAT, "complete", () -> {
             try {
                 var body = Map.of("model", model, "stream", false, "temperature", 0, "max_tokens", 500,
-                    "messages", List.of(Map.of("role", "system", "content", system), Map.of("role", "user", "content", question)));
+                    "messages", List.of(Map.of("role", "system", "content", system),
+                        Map.of("role", "user", "content", trustBoundary.wrap(new PromptTrustBoundary.UntrustedContext("current_user_request", question)))));
                 var response = sendString(request(body));
                 var content = json.readTree(response.body()).path("choices").path(0).path("message").path("content");
                 if (!content.isTextual() || content.asText().isBlank()) {
@@ -74,15 +79,14 @@ public class DeepSeekChat {
 
     /** Provider-native SSE retries only its pre-token handshake; replaying emitted deltas would duplicate text. */
     public void stream(String system, List<ConversationMessage> history, String question, Consumer<String> output) {
+        stream(system, history, List.of(), question, output);
+    }
+
+    /** Sends untrusted contexts as separately labelled user messages, never by appending them to policy. */
+    public void stream(String system, List<ConversationMessage> history, List<PromptTrustBoundary.UntrustedContext> contexts,
+            String question, Consumer<String> output) {
         requireConfigured();
-        var messages = new ArrayList<Map<String, String>>();
-        messages.add(Map.of("role", "system", "content", system));
-        for (var item : history) {
-            if (("user".equals(item.role()) || "assistant".equals(item.role())) && !item.content().isBlank()) {
-                messages.add(Map.of("role", item.role(), "content", item.content()));
-            }
-        }
-        messages.add(Map.of("role", "user", "content", question));
+        var messages = streamingMessages(system, history, contexts, question);
         HttpResponse<Stream<String>> response = resilience.execute(AiProvider.DEEPSEEK_CHAT, "stream_connect", () -> {
             try {
                 return sendLines(request(Map.of("model", model, "stream", true, "temperature", 0.2, "max_tokens", 800, "messages", messages)));
@@ -99,6 +103,25 @@ public class DeepSeekChat {
         } catch (Exception exception) {
             throw resilience.recordStreamingFailure(AiProvider.DEEPSEEK_CHAT, "stream_body", exception);
         }
+    }
+
+    /** Package-visible for deterministic verification that data cannot be appended to trusted policy. */
+    List<Map<String, String>> streamingMessages(String system, List<ConversationMessage> history,
+            List<PromptTrustBoundary.UntrustedContext> contexts, String question) {
+        var messages = new ArrayList<Map<String, String>>();
+        messages.add(Map.of("role", "system", "content", system));
+        for (var item : history) {
+            if (("user".equals(item.role()) || "assistant".equals(item.role())) && !item.content().isBlank()) {
+                messages.add(Map.of("role", item.role(), "content", trustBoundary.wrap(
+                    new PromptTrustBoundary.UntrustedContext("conversation_" + item.role(), item.content()))));
+            }
+        }
+        for (var context : contexts) {
+            messages.add(Map.of("role", "user", "content", trustBoundary.wrap(context)));
+        }
+        messages.add(Map.of("role", "user", "content", trustBoundary.wrap(
+            new PromptTrustBoundary.UntrustedContext("current_user_request", question))));
+        return List.copyOf(messages);
     }
 
     private HttpRequest request(Object body) throws Exception {

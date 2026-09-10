@@ -4,9 +4,9 @@ import com.opsnexus.assistant.DeepSeekChat;
 import com.opsnexus.governance.AiGovernanceService;
 import com.opsnexus.knowledge.KnowledgeException;
 import com.opsnexus.resilience.AiProviderException;
+import com.opsnexus.security.PromptTrustBoundary;
 import java.sql.*;
 import java.util.*;
-import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -14,11 +14,6 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class AnalyticsService {
-    private static final Pattern SENSITIVE_ASSIGNMENT = Pattern.compile(
-        "(?i)(password|api[_ -]?key|token|secret)(\\s*[=:]\\s*)(['\\\"]?)[^\\s,;'\\\"]+"
-    );
-    private static final Pattern BEARER_TOKEN = Pattern.compile("(?i)bearer\\s+[a-z0-9._-]+");
-
     private final String schema;
     private final JdbcTemplate audit;
     private final DeepSeekChat ai;
@@ -27,12 +22,14 @@ public class AnalyticsService {
     private final String url;
     private final String user;
     private final String password;
+    private final PromptTrustBoundary trustBoundary;
 
     public AnalyticsService(
         JdbcTemplate audit,
         DeepSeekChat ai,
         SqlSafetyValidator validator,
         AiGovernanceService governance,
+        PromptTrustBoundary trustBoundary,
         @Value("${ops.analytics-url}") String url,
         @Value("${ops.analytics-username}") String user,
         @Value("${ops.analytics-password}") String password,
@@ -45,7 +42,8 @@ public class AnalyticsService {
         this.url = url;
         this.user = user;
         this.password = password;
-        this.schema = "You generate exactly one " + dialect + " SELECT statement and no explanation. "
+        this.trustBoundary = trustBoundary;
+        this.schema = trustBoundary.analyticsSystemPolicy("You generate exactly one " + dialect + " SELECT statement and no explanation. "
             + "Allowed tables/columns: service_catalog(id,service_name,display_name,owner_name,current_version,runtime_status); "
             + "release_record(id,service_name,version_no,environment,status,released_at,summary); "
             + "incident_record(id,service_name,symptom,root_cause,resolution,status,occurred_at,resolved_at). "
@@ -53,21 +51,23 @@ public class AnalyticsService {
             + "No SELECT *, CTE, UNION, subquery, system table, duplicate table, or more than two JOINs. "
             + "A JOIN must use explicit aliases and only service_catalog.service_name = release_record.service_name "
             + "or service_catalog.service_name = incident_record.service_name. "
-            + "Use aliases only from selected expressions. LIMIT is at most 100.";
+            + "Use aliases only from selected expressions. LIMIT is at most 100.");
     }
 
     public Map<String, Object> query(long userId, String question) {
         if (question == null || question.isBlank() || question.length() > 300) {
             throw new KnowledgeException(400, "INVALID_INPUT", "分析问题不能为空且不能超过 300 字");
         }
+        trustBoundary.rejectDirectDisclosure(question);
+        String safeQuestion = trustBoundary.redactSecrets(question);
         String requestId = UUID.randomUUID().toString();
         String sql = null;
-        long auditId = createAudit(requestId, userId, question);
+        long auditId = createAudit(requestId, userId, safeQuestion);
         long started = System.nanoTime();
         try {
-            var permit = governance.enter(userId, "TEXT_TO_SQL", ai.modelName(), question.length());
+            var permit = governance.enter(userId, "TEXT_TO_SQL", ai.modelName(), safeQuestion.length());
             try {
-                sql = ai.complete(schema, question);
+                sql = ai.complete(schema, safeQuestion);
                 permit.output(sql.length());
             } catch (Exception exception) {
                 permit.fail("SQL_GENERATION_FAILED");
@@ -163,13 +163,9 @@ public class AnalyticsService {
         return rows.isEmpty() ? "查询成功，但没有符合条件的记录。" : "安全查询成功，共返回 " + rows.size() + " 行；结论仅基于页面展示的数据。";
     }
 
-    /** Keeps credentials and bearer values out of business audit storage, including rejected model output. */
+    /** Uses the shared model-input redaction policy for business audit storage too. */
     private String redact(String value) {
-        if (value == null) {
-            return null;
-        }
-        String masked = SENSITIVE_ASSIGNMENT.matcher(value).replaceAll("$1$2$3***");
-        return BEARER_TOKEN.matcher(masked).replaceAll("Bearer ***");
+        return value == null ? null : trustBoundary.redactSecrets(value);
     }
 
     private record Result(List<String> columns, List<Map<String, Object>> rows) { }
