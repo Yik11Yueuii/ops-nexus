@@ -59,13 +59,25 @@ class AssistantServiceTest {
   db.update("INSERT INTO release_record(service_name,version_no,environment,status,released_at,summary) VALUES('order-service','2.3.1','PROD','SUCCESS',CURRENT_TIMESTAMP,'连接池参数变更')");
   db.update("INSERT INTO incident_record(service_name,symptom,root_cause,resolution,status,occurred_at) VALUES('order-service','连接超时','连接泄漏','修复释放逻辑','RESOLVED',CURRENT_TIMESTAMP)");
   when(vectors.search(anyString(),eq(8))).thenReturn(List.of(Document.builder().id("sop").text("先确认 active 与 max 指标，再检查慢查询").metadata("versionId",302L).score(.86).build()));
-  doAnswer(inv->{String prompt=inv.getArgument(0);List<com.opsnexus.security.PromptTrustBoundary.UntrustedContext> contexts=inv.getArgument(2);assertFalse(prompt.contains("2.3.1"));assertTrue(prompt.contains("待验证假设"));assertTrue(contexts.getFirst().content().contains("2.3.1"));assertTrue(contexts.getFirst().content().contains("连接池参数变更"));assertTrue(contexts.getFirst().content().contains("连接泄漏"));assertTrue(contexts.getFirst().content().contains("先确认 active"));java.util.function.Consumer<String> out=inv.getArgument(4);out.accept("## 初步判断\n待验证：连接可能未释放。");return null;}).when(chat).stream(anyString(),anyList(),anyList(),anyString(),any());
-  var streamed=new StringBuilder();var result=diagnosis.diagnose(1,100,"order-service","Redis 连接超时","发布后出现",streamed::append);
+  when(chat.decideTools(anyString(),anyList(),anyString(),anyList())).thenReturn(new DeepSeekChat.ToolDecision("",List.of(new DiagnosisToolRegistry.ToolRequest("1","lookup_service_status","{\"input\":{\"service\":\"order-service\"}}"),new DiagnosisToolRegistry.ToolRequest("2","lookup_recent_releases","{\"input\":{\"service\":\"order-service\"}}"),new DiagnosisToolRegistry.ToolRequest("3","lookup_recent_incidents","{\"input\":{\"service\":\"order-service\"}}"))),new DeepSeekChat.ToolDecision("已完成工具查询",List.of()));
+  doAnswer(inv->{String prompt=inv.getArgument(0);List<com.opsnexus.security.PromptTrustBoundary.UntrustedContext> contexts=inv.getArgument(2);assertFalse(prompt.contains("2.3.1"));assertTrue(prompt.contains("待验证假设"));String joined=contexts.stream().map(com.opsnexus.security.PromptTrustBoundary.UntrustedContext::content).reduce("",String::concat);assertTrue(joined.contains("2.3.1"));assertTrue(joined.contains("连接池参数变更"));assertTrue(joined.contains("连接泄漏"));assertTrue(joined.contains("先确认 active"));java.util.function.Consumer<String> out=inv.getArgument(4);out.accept("## 初步判断\n待验证：连接可能未释放。");return null;}).when(chat).stream(anyString(),anyList(),anyList(),anyString(),any());
+  var streamed=new StringBuilder();var result=diagnosis.diagnose(1,true,100,"order-service","Redis 连接超时","发布后出现",streamed::append);
   long id=((Number)result.get("diagnosisId")).longValue();assertTrue(streamed.toString().contains("待验证"));
   var saved=db.queryForMap("SELECT status,result_content,evidence_snapshot FROM diagnosis_record WHERE id=?",id);
-  assertEquals("OPEN",saved.get("STATUS"));assertTrue(saved.get("EVIDENCE_SNAPSHOT").toString().contains("recentReleases"));
-  assertEquals(1,diagnosis.history(1).size());assertTrue(diagnosis.history(2).isEmpty());
+  assertEquals("OPEN",saved.get("STATUS"));assertTrue(saved.get("EVIDENCE_SNAPSHOT").toString().contains("toolCalls"));
+ assertEquals(1,diagnosis.history(1).size());assertTrue(diagnosis.history(2).isEmpty());
   diagnosis.resolve(1,id);assertEquals("RESOLVED",db.queryForObject("SELECT status FROM diagnosis_record WHERE id=?",String.class,id));
+ }
+ @Test void diagnosisCanFinishWithoutToolAndDoesNotStartASecondModelTurn(){
+  when(vectors.search(anyString(),eq(8))).thenReturn(List.of(Document.builder().id("sop").text("确认服务健康状态并保留现场").metadata("versionId",302L).score(.86).build()));
+  when(chat.decideTools(anyString(),anyList(),anyString(),anyList())).thenReturn(new DeepSeekChat.ToolDecision("## 初步判断\n无需额外工具。",List.of()));
+  var output=new StringBuilder();var result=diagnosis.diagnose(1,false,100,"order-service","轻微延迟","无发布",output::append);
+  assertTrue(output.toString().contains("无需额外工具"));assertEquals(List.of(),result.get("toolEvidence"));verify(chat,never()).stream(anyString(),anyList(),anyList(),anyString(),any());
+ }
+ @Test void diagnosisRejectsModelRequestedAdminToolForNormalUser(){
+  when(vectors.search(anyString(),eq(8))).thenReturn(List.of(Document.builder().id("sop").text("确认服务健康状态").metadata("versionId",302L).score(.86).build()));
+  when(chat.decideTools(anyString(),anyList(),anyString(),anyList())).thenReturn(new DeepSeekChat.ToolDecision("",List.of(new DiagnosisToolRegistry.ToolRequest("1","lookup_recent_incidents","{\"input\":{\"service\":\"order-service\"}}"))));
+  var failure=assertThrows(com.opsnexus.knowledge.KnowledgeException.class,()->diagnosis.diagnose(1,false,100,"order-service","延迟","无",x->{}));assertEquals("TOOL_ACCESS_DENIED",failure.code);
  }
  @Test void comparesVersionsLocallyAndReportsRiskHints(){
   var result=versionCompare.compare(301,302);assertEquals("v1",result.oldVersion());assertEquals("v2",result.newVersion());

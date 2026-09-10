@@ -24,6 +24,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class DeepSeekChat {
     public record ConversationMessage(String role, String content) { }
+    /** A provider tool request is untrusted model output and must be authorized by DiagnosisToolRegistry. */
+    public record ToolDecision(String content, List<DiagnosisToolRegistry.ToolRequest> toolCalls) { }
 
     private final String key;
     private final String url;
@@ -65,6 +67,47 @@ public class DeepSeekChat {
                     throw new AiProviderException(AiProvider.DEEPSEEK_CHAT, AiProviderFailure.MALFORMED_RESPONSE);
                 }
                 return content.asText();
+            } catch (AiProviderException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw new AiProviderException(AiProvider.DEEPSEEK_CHAT, AiProviderFailure.MALFORMED_RESPONSE, exception);
+            }
+        });
+    }
+
+    /**
+     * Runs a non-streaming tool-selection turn. Spring AI produces the supplied tool definitions while this
+     * OpenAI-compatible client only transports the provider protocol; it never executes a requested tool.
+     */
+    public ToolDecision decideTools(String system, List<PromptTrustBoundary.UntrustedContext> contexts,
+            String question, List<Map<String, Object>> tools) {
+        requireConfigured();
+        return resilience.execute(AiProvider.DEEPSEEK_CHAT, "tool_decision", () -> {
+            try {
+                var body = new java.util.LinkedHashMap<String, Object>();
+                body.put("model", model);
+                body.put("stream", false);
+                body.put("temperature", 0);
+                body.put("max_tokens", 500);
+                body.put("messages", streamingMessages(system, List.of(), contexts, question));
+                body.put("tools", tools);
+                body.put("tool_choice", "auto");
+                var response = sendString(request(body));
+                var message = json.readTree(response.body()).path("choices").path(0).path("message");
+                if (message.isMissingNode() || message.isNull()) {
+                    throw new AiProviderException(AiProvider.DEEPSEEK_CHAT, AiProviderFailure.MALFORMED_RESPONSE);
+                }
+                var calls = new ArrayList<DiagnosisToolRegistry.ToolRequest>();
+                for (var call : message.path("tool_calls")) {
+                    calls.add(new DiagnosisToolRegistry.ToolRequest(call.path("id").asText(""),
+                        call.path("function").path("name").asText(""),
+                        call.path("function").path("arguments").asText("")));
+                }
+                String content = message.path("content").isTextual() ? message.path("content").asText() : "";
+                if (calls.isEmpty() && content.isBlank()) {
+                    throw new AiProviderException(AiProvider.DEEPSEEK_CHAT, AiProviderFailure.MALFORMED_RESPONSE);
+                }
+                return new ToolDecision(content, List.copyOf(calls));
             } catch (AiProviderException exception) {
                 throw exception;
             } catch (Exception exception) {
