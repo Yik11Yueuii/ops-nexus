@@ -145,6 +145,6 @@ class KnowledgeGapLifecycleTest {
 
     private void stubAnswerWithEvidence() {
         when(vectors.search(anyString(), eq(8))).thenReturn(List.of(currentEvidence()));
-        doAnswer(invocation -> { Consumer<String> output = invocation.getArgument(3); output.accept("应先灰度发布。"); return null; }).when(chat).stream(anyString(), anyList(), anyString(), any());
+        doAnswer(invocation -> { Consumer<String> output = invocation.getArgument(4); output.accept("应先灰度发布。"); return null; }).when(chat).stream(anyString(), anyList(), anyList(), anyString(), any());
     }
 }
