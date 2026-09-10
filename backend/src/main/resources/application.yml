@@ -34,6 +34,27 @@ ops:
   analytics-username: ${ANALYTICS_DB_USERNAME:ops_analytics}
   analytics-password: ${ANALYTICS_DB_PASSWORD:ops-analytics-readonly}
   ai-rate-per-minute: ${AI_RATE_PER_MINUTE:10}
+  ai-resilience:
+    chat:
+      connect-timeout: ${DEEPSEEK_CONNECT_TIMEOUT:10s}
+      response-timeout: ${DEEPSEEK_RESPONSE_TIMEOUT:60s}
+      retry-max-attempts: ${DEEPSEEK_RETRY_MAX_ATTEMPTS:2}
+      retry-wait-duration: ${DEEPSEEK_RETRY_WAIT_DURATION:200ms}
+      circuit-sliding-window-size: ${DEEPSEEK_CIRCUIT_WINDOW:10}
+      circuit-minimum-calls: ${DEEPSEEK_CIRCUIT_MIN_CALLS:5}
+      circuit-failure-rate-threshold: ${DEEPSEEK_CIRCUIT_FAILURE_RATE:50}
+      circuit-open-wait-duration: ${DEEPSEEK_CIRCUIT_OPEN_WAIT:10s}
+      circuit-half-open-permitted-calls: ${DEEPSEEK_CIRCUIT_HALF_OPEN_CALLS:2}
+    embedding:
+      connect-timeout: ${DASHSCOPE_CONNECT_TIMEOUT:10s}
+      response-timeout: ${DASHSCOPE_RESPONSE_TIMEOUT:30s}
+      retry-max-attempts: ${DASHSCOPE_RETRY_MAX_ATTEMPTS:2}
+      retry-wait-duration: ${DASHSCOPE_RETRY_WAIT_DURATION:200ms}
+      circuit-sliding-window-size: ${DASHSCOPE_CIRCUIT_WINDOW:10}
+      circuit-minimum-calls: ${DASHSCOPE_CIRCUIT_MIN_CALLS:5}
+      circuit-failure-rate-threshold: ${DASHSCOPE_CIRCUIT_FAILURE_RATE:50}
+      circuit-open-wait-duration: ${DASHSCOPE_CIRCUIT_OPEN_WAIT:10s}
+      circuit-half-open-permitted-calls: ${DASHSCOPE_CIRCUIT_HALF_OPEN_CALLS:2}
   conversation-context:
     max-messages: ${CONVERSATION_CONTEXT_MAX_MESSAGES:8}
     max-chars: ${CONVERSATION_CONTEXT_MAX_CHARS:4000}

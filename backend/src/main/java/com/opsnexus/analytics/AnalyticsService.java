@@ -3,6 +3,7 @@ package com.opsnexus.analytics;
 import com.opsnexus.assistant.DeepSeekChat;
 import com.opsnexus.governance.AiGovernanceService;
 import com.opsnexus.knowledge.KnowledgeException;
+import com.opsnexus.resilience.AiProviderException;
 import java.sql.*;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -95,6 +96,9 @@ public class AnalyticsService {
             );
             if (exception instanceof KnowledgeException knowledgeException) {
                 throw knowledgeException;
+            }
+            if (exception instanceof AiProviderException providerException) {
+                throw new KnowledgeException(503, providerException.errorCode(), providerException.getMessage());
             }
             throw new KnowledgeException(503, "ANALYTICS_FAILED", reason);
         }

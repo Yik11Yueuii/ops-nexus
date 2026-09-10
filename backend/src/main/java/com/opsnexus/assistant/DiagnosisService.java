@@ -1,6 +1,7 @@
 package com.opsnexus.assistant;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.opsnexus.knowledge.KnowledgeException;
+import com.opsnexus.resilience.AiProviderException;
 import java.sql.Timestamp;import java.time.Instant;import java.util.*;import java.util.function.Consumer;
 import org.springframework.jdbc.core.JdbcTemplate;import org.springframework.jdbc.support.GeneratedKeyHolder;import org.springframework.stereotype.Service;
 @Service public class DiagnosisService{
@@ -24,7 +25,7 @@ import org.springframework.jdbc.core.JdbcTemplate;import org.springframework.jdb
       ## 建议记录
       工具事实可以直接陈述；推理必须标为待验证，危险操作先提示审批或回滚条件。
       """+"工具快照："+write(snapshot)+"\n文档证据编号沿用 citations 顺序。";
-  var out=new StringBuilder();chat.stream(prompt,"服务："+service+"\n现象："+symptom+"\n上下文："+Objects.requireNonNullElse(context,"未提供"),p->{out.append(p);delta.accept(p);});
+  var out=new StringBuilder();try{chat.stream(prompt,"服务："+service+"\n现象："+symptom+"\n上下文："+Objects.requireNonNullElse(context,"未提供"),p->{out.append(p);delta.accept(p);});}catch(AiProviderException e){throw new KnowledgeException(503,e.errorCode(),e.getMessage());}
   var key=new GeneratedKeyHolder();db.update(c->{var p=c.prepareStatement("INSERT INTO diagnosis_record(user_id,kb_id,service_name,symptom,error_context,result_content,evidence_snapshot) VALUES(?,?,?,?,?,?,?)",new String[]{"id"});p.setLong(1,user);p.setLong(2,kb);p.setString(3,service);p.setString(4,symptom);p.setString(5,context);p.setString(6,out.toString());p.setString(7,write(snapshot));return p;},key);
   return Map.of("diagnosisId",Objects.requireNonNull(key.getKey()).longValue(),"citations",citations,"toolEvidence",snapshot,"status","OPEN");
  }

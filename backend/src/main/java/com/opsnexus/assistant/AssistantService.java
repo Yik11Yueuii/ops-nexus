@@ -3,6 +3,7 @@ package com.opsnexus.assistant;
 import com.opsnexus.governance.KnowledgeGapService;
 import com.opsnexus.ingestion.VectorIndex;
 import com.opsnexus.knowledge.KnowledgeException;
+import com.opsnexus.resilience.AiProviderException;
 import java.util.*;
 import java.util.function.Consumer;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -110,6 +111,7 @@ public class AssistantService {
         var content = new StringBuilder();
         var messages = history.messages().stream().map(item -> new DeepSeekChat.ConversationMessage(item.role().toLowerCase(Locale.ROOT), item.content())).toList();
         try { chat.stream(system, messages, question, part -> { content.append(part); delta.accept(part); }); }
+        catch (AiProviderException error) { throw new KnowledgeException(503, error.errorCode(), error.getMessage()); }
         catch (Exception error) { if (content.isEmpty()) throw new KnowledgeException(502, "CHAT_FAILED", error.getMessage()); throw error; }
         long sourceCount = evidence.stream().map(Evidence::versionId).distinct().count();
         String confidence = sourceCount >= 2 && evidence.stream().allMatch(item -> item.score() >= 0.65) ? "HIGH" : "MEDIUM";
