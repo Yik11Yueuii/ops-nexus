@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import com.opsnexus.resilience.AiProviderException;
 import org.springframework.ai.document.Document;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,8 @@ public class EvidenceRetrievalService {
         List<Document> candidates;
         try {
             candidates = vectors.search(question, 8);
+        } catch (AiProviderException e) {
+            throw new com.opsnexus.knowledge.KnowledgeException(503, e.errorCode(), e.getMessage());
         } catch (Exception e) {
             throw new com.opsnexus.knowledge.KnowledgeException(503, "VECTOR_UNAVAILABLE", e.getMessage());
         }

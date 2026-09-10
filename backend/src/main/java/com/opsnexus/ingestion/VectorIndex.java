@@ -1,6 +1,7 @@
 package com.opsnexus.ingestion;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.opsnexus.resilience.AiProviderException;
 import jakarta.annotation.PostConstruct;
 import java.nio.file.*;
 import java.util.*;
@@ -52,6 +53,9 @@ public class VectorIndex {
             persist();
         } catch (Exception e) {
             store.delete(ids);
+            if (e instanceof AiProviderException providerError) {
+                throw providerError;
+            }
             throw new IllegalStateException(e.getMessage());
         }
     }

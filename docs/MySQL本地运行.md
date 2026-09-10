@@ -25,7 +25,7 @@ Navicat 可用于创建数据库/用户、导入 schema 和检查索引/外键�
 
 ## 既有数据库升级
 
-升级前备份数据库并先在预发执行。`schema-mysql.sql` 是 fresh-init 脚本；已有库使用 [mysql-upgrade-v2-006.sql](mysql-upgrade-v2-006.sql) 的一次性迁移步骤。它会为缺口问题建立完整 SHA-256 唯一键，并补足原先 MySQL 内联 `REFERENCES` 没有真正创建的外键。若预检发现孤儿数据或重复规范化问题，应先人工处理，不能强行关闭外键校验。
+升级前备份数据库并先在预发执行。`schema-mysql.sql` 是 fresh-init 脚本；已有库先执行 [mysql-upgrade-v2-006.sql](mysql-upgrade-v2-006.sql)，再执行 [mysql-upgrade-v2-005-ai-resilience.sql](mysql-upgrade-v2-005-ai-resilience.sql)。前者会为缺口问题建立完整 SHA-256 唯一键，并补足原先 MySQL 内联 `REFERENCES` 没有真正创建的外键；后者只新增不含请求内容或凭据的 AI Provider 调用元数据审计表。若预检发现孤儿数据或重复规范化问题，应先人工处理，不能强行关闭外键校验。
 
 ## 验证命令
 
