@@ -98,6 +98,12 @@ class KnowledgeIntegrationTest {
         ready(v);
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM document_chunk_ref WHERE version_id=?",Integer.class,v));
     }
+    @Test void analyticsEndpointsRequireAdministratorRole()throws Exception{
+        mvc.perform(post("/api/admin/analytics/query").with(user()).contentType("application/json").content("{\"question\":\"查询服务版本\"}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(get("/api/admin/analytics/audits").with(user())).andExpect(status().isForbidden());
+        mvc.perform(get("/api/admin/analytics/audits")).andExpect(status().isUnauthorized());
+    }
     @Test void parsesFourFormatsAndPreservesPdfPages()throws Exception{
         assertEquals("hello",parser.parse("hello".getBytes(),"MD").getFirst().content());
         assertEquals("中文正文",parser.parse("中文正文".getBytes(StandardCharsets.UTF_8),"TXT").getFirst().content());

@@ -95,6 +95,15 @@ class AssistantServiceTest {
   assertThrows(com.opsnexus.knowledge.KnowledgeException.class,()->sqlValidator.validate("SELECT password_hash FROM app_user"));
   assertThrows(com.opsnexus.knowledge.KnowledgeException.class,()->sqlValidator.validate("SELECT service_name FROM incident_record; DELETE FROM incident_record"));
  }
+ @Test void analyticsAuditRedactsSensitiveRejectedPromptAndModelSql(){
+  when(chat.complete(anyString(),eq("api_key=question-secret"))).thenReturn("SELECT service_name FROM incident_record WHERE api_key='model-secret'");
+  assertThrows(com.opsnexus.knowledge.KnowledgeException.class,()->analytics.query(1,"api_key=question-secret"));
+  var audit=db.queryForMap("SELECT question,generated_sql,failure_reason FROM sql_query_audit");
+  assertFalse(audit.get("QUESTION").toString().contains("question-secret"));
+  assertFalse(audit.get("GENERATED_SQL").toString().contains("model-secret"));
+  assertTrue(audit.get("QUESTION").toString().contains("***"));
+  assertTrue(audit.get("GENERATED_SQL").toString().contains("***"));
+ }
  @Test void aiGovernanceBlocksConcurrencyAndRateLimitAndLogsEstimatedTokens(){
   long user=Math.abs(System.nanoTime());var first=aiGovernance.enter(user,"TEST","mock-model",20);assertThrows(com.opsnexus.knowledge.KnowledgeException.class,()->aiGovernance.enter(user,"TEST","mock-model",1));first.output(12);first.close();
   for(int i=0;i<9;i++)aiGovernance.enter(user,"TEST","mock-model",4).close();
